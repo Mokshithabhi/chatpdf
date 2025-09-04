@@ -32,7 +32,6 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "declarations.d.ts",
     ".next/types/**/*.ts",
     "public/pdf.worker.min.js"
   ],
