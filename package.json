@@ -11,6 +11,7 @@
   "dependencies": {
     "@langchain/community": "^0.3.53",
     "@langchain/openai": "^0.6.9",
+    "@vercel/blob": "^1.1.1",
     "axios": "^1.11.0",
     "dotenv": "^16.4.5",
     "langchain": "^0.3.31",

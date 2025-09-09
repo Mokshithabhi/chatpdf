@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { put } from "@vercel/blob";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { extractPdfPages } from "@/utils/pdfExtract";
-// import { pdfStore } from "@/app/api/chat/route";
-import { processPdfToVectorStore } from "@/utils/langchainPdf";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 
@@ -17,15 +16,27 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(UPLOAD_DIR))
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-    const safeName = file.name.replace(/[^a-z0-9.\-_]/gi, "_");
-    filePath = path.join(UPLOAD_DIR, safeName);
+    function getFileHash(buffer: Buffer) {
+      return crypto.createHash("sha256").update(buffer).digest("hex");
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    const hash = getFileHash(buffer);
+    const safeName = `${hash}_${file.name.replace(/[^a-z0-9.\-_]/gi, "_")}`;
+    filePath = path.join(UPLOAD_DIR, safeName);
     fs.writeFileSync(filePath, buffer);
+
+    const { url } = await put(safeName, buffer, {
+      access: "public",
+      contentType: file.type,
+      allowOverwrite: true,
+    });
 
     return NextResponse.json({
       success: true,
       filename: safeName,
+      url,
     });
   } catch (err) {
     console.error(err);
