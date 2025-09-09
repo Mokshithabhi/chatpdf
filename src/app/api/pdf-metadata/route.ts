@@ -1,4 +1,3 @@
-// app/api/pdf-metadata/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import {
   getPdfMetadata,
