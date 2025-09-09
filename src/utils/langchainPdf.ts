@@ -1,16 +1,15 @@
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
 import { OpenAIEmbeddings, ChatOpenAI } from "@langchain/openai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import fs from "fs";
-import path from "path";
 
 const vectorStores: Record<string, MemoryVectorStore> = {};
 const processingStatus: Record<string, boolean> = {};
 const pdfMetadata: Record<string, PdfMetadata> = {};
+export const pdfUrls: Record<string, string> = {};
 
 interface PdfMetadata {
   title?: string;
@@ -129,15 +128,21 @@ Respond in JSON format:
 }
 
 export async function processPdfToVectorStore(
-  pdfPath: string,
+  pdfUrl: string,
   pdfId: string
 ): Promise<MemoryVectorStore> {
   try {
     console.log(`Starting PDF processing for pdfId: ${pdfId}`);
     processingStatus[pdfId] = true;
+    console.log(`Fetching PDF from URL: ${pdfUrl}`, pdfId);
+    pdfUrls[pdfId] = pdfUrl;
+
+    const resp = await fetch(pdfUrl);
+    const blob = await resp.blob();
+    const file = new File([blob], pdfId, { type: "application/pdf" });
 
     // Load PDF
-    const loader = new PDFLoader(pdfPath);
+    const loader = new WebPDFLoader(file);
     const docs = await loader.load();
     console.log(`Loaded ${docs.length} documents for pdfId: ${pdfId}`);
 
@@ -173,7 +178,8 @@ export async function processPdfToVectorStore(
 }
 
 async function getOrCreateVectorStore(
-  pdfId: string
+  pdfId: string,
+  pdfUrl: string
 ): Promise<MemoryVectorStore> {
   if (vectorStores[pdfId]) {
     console.log(`Using cached vector store for pdfId: ${pdfId}`);
@@ -186,13 +192,11 @@ async function getOrCreateVectorStore(
     );
   }
 
-  const pdfPath = path.join(process.cwd(), "public", "uploads", pdfId);
-
-  if (!fs.existsSync(pdfPath)) {
-    throw new Error(`PDF file not found: ${pdfId}. Please re-upload the PDF.`);
+  if (!pdfUrl) {
+    throw new Error("Blob URL not found for this PDF. Please re-upload.");
   }
 
-  return await processPdfToVectorStore(pdfPath, pdfId);
+  return await processPdfToVectorStore(pdfUrl, pdfId);
 }
 
 function canAnswerFromMetadata(
@@ -273,7 +277,11 @@ function canAnswerFromMetadata(
   return null;
 }
 
-export async function askPdfQuestion(pdfId: string, question: string) {
+export async function askPdfQuestion(
+  pdfId: string,
+  question: string,
+  pdfUrl: string
+) {
   console.log(`Querying pdfId: ${pdfId}`);
   console.log(
     `Available pdfIds in cache: ${
@@ -283,7 +291,7 @@ export async function askPdfQuestion(pdfId: string, question: string) {
 
   try {
     // Get or create vector store (this also loads metadata)
-    await getOrCreateVectorStore(pdfId);
+    await getOrCreateVectorStore(pdfId, pdfUrl);
 
     // Check if we can answer from metadata first
     const metadata = pdfMetadata[pdfId];
@@ -309,7 +317,6 @@ export async function askPdfQuestion(pdfId: string, question: string) {
       temperature: 0,
     });
 
-    // Enhanced system prompt that includes metadata context
     let systemPrompt = `You are a helpful AI assistant that answers questions based on the provided PDF context. 
 Use the context below to answer the user's question accurately and concisely.`;
 
@@ -439,12 +446,10 @@ export function getProcessingInfo(pdfId: string): {
   fileExists: boolean;
   hasMetadata: boolean;
 } {
-  const pdfPath = path.join(process.cwd(), "public", "uploads", pdfId);
-
   return {
     processed: isPdfProcessed(pdfId),
     processing: isPdfProcessing(pdfId),
-    fileExists: fs.existsSync(pdfPath),
+    fileExists: !!pdfUrls[pdfId],
     hasMetadata: !!pdfMetadata[pdfId],
   };
 }

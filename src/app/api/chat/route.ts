@@ -3,18 +3,22 @@ import { askPdfQuestion } from "@/utils/langchainPdf";
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, pdfId } = await req.json();
-    if (!question || !pdfId) {
+    const { question, pdfId, pdfUrl } = await req.json();
+    if (!question || !pdfId || !pdfUrl) {
       return NextResponse.json(
         {
-          answer: "Missing question or pdfId",
+          answer: "Missing question, pdfId or pdfUrl",
           citations: [],
         },
         { status: 400 }
       );
     }
 
-    const { answer, citations, res } = await askPdfQuestion(pdfId, question);
+    const { answer, citations, res } = await askPdfQuestion(
+      pdfId,
+      question,
+      pdfUrl
+    );
 
     return NextResponse.json({
       res,

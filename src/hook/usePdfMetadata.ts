@@ -1,5 +1,5 @@
-// hooks/usePdfMetadata.ts
-import { useState, useEffect } from "react";
+import { useContextPdf } from "@/app/context/page.context";
+import { useState, useEffect, useRef } from "react";
 
 interface PdfMetadata {
   title?: string;
@@ -42,15 +42,23 @@ export const usePdfMetadata = (pdfId: string | null) => {
     fileExists: false,
     hasMetadata: false,
   });
+  const { pdfUrl } = useContextPdf();
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchMetadata = async (id: string) => {
+  if (!pdfUrl) {
+    throw new Error("pdfUrl is required in context for usePdfMetadata");
+  }
+
+  const fetchMetadata = async (id: string, shouldPoll = true) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Use GET request with query parameter
+      // Use GET request with query parameters
       const response = await fetch(
-        `/api/pdf-metadata?pdfId=${encodeURIComponent(id)}`
+        `/api/pdf-metadata?pdfId=${encodeURIComponent(
+          id
+        )}&pdfUrl=${encodeURIComponent(pdfUrl)}`
       );
       const data: MetadataResponse = await response.json();
 
@@ -65,10 +73,54 @@ export const usePdfMetadata = (pdfId: string | null) => {
         fileExists: data.fileExists,
         hasMetadata: data.hasMetadata || false,
       });
+
+      // If processing is in progress and shouldPoll is true, poll for updates
+      if (data.processing && shouldPoll) {
+        // Clear any existing polling interval
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+        }
+
+        // Set up polling every 2 seconds
+        pollingIntervalRef.current = setInterval(async () => {
+          try {
+            const pollResponse = await fetch(
+              `/api/pdf-metadata?pdfId=${encodeURIComponent(
+                id
+              )}&pdfUrl=${encodeURIComponent(pdfUrl)}`
+            );
+            const pollData: MetadataResponse = await pollResponse.json();
+
+            if (pollResponse.ok) {
+              setMetadata(pollData.metadata);
+              setProcessingInfo({
+                processed: pollData.processed,
+                processing: pollData.processing,
+                fileExists: pollData.fileExists,
+                hasMetadata: pollData.hasMetadata || false,
+              });
+
+              // Stop polling if processing is complete
+              if (pollData.processed || !pollData.processing) {
+                if (pollingIntervalRef.current) {
+                  clearInterval(pollingIntervalRef.current);
+                  pollingIntervalRef.current = null;
+                }
+                setLoading(false);
+              }
+            }
+          } catch (err) {
+            console.error("Error during polling:", err);
+            // Continue polling even if there's an error
+          }
+        }, 2000);
+      } else {
+        // Processing is complete or not started
+        setLoading(false);
+      }
     } catch (err) {
       console.error("Error fetching metadata:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
       setLoading(false);
     }
   };
@@ -78,11 +130,10 @@ export const usePdfMetadata = (pdfId: string | null) => {
       setLoading(true);
       setError(null);
 
-      // Use POST request for quick answers
       const response = await fetch("/api/pdf-metadata", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdfId: id }),
+        body: JSON.stringify({ pdfId: id, pdfUrl }),
       });
 
       const data: MetadataResponse = await response.json();
@@ -99,19 +150,33 @@ export const usePdfMetadata = (pdfId: string | null) => {
         fileExists: data.fileExists,
         hasMetadata: data.hasMetadata || false,
       });
+
+      // If still processing, start polling
+      if (data.processing) {
+        fetchMetadata(id, true);
+      } else {
+        setLoading(false);
+      }
     } catch (err) {
       console.error("Error fetching quick answers:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (pdfId) {
+    if (pdfId && pdfUrl) {
       fetchMetadata(pdfId);
     }
-  }, [pdfId]);
+
+    // Cleanup polling on unmount or when dependencies change
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [pdfId, pdfUrl]);
 
   return {
     metadata,
@@ -119,7 +184,7 @@ export const usePdfMetadata = (pdfId: string | null) => {
     loading,
     error,
     processingInfo,
-    refetchMetadata: () => pdfId && fetchMetadata(pdfId),
+    refetchMetadata: () => pdfId && fetchMetadata(pdfId, false),
     fetchQuickAnswers: () => pdfId && fetchQuickAnswers(pdfId),
   };
 };

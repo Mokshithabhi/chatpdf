@@ -21,7 +21,7 @@ export default function Chatbox({ pdfId }: ChatboxProps) {
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { setPageNumber } = useContextPdf();
+  const { setPageNumber, pdfUrl } = useContextPdf();
   const {
     quickAnswers,
     processingInfo,
@@ -55,7 +55,7 @@ export default function Chatbox({ pdfId }: ChatboxProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: questionText, pdfId }),
+        body: JSON.stringify({ question: questionText, pdfId, pdfUrl }),
       });
       const data = await res.json();
       const botMsg: Message = {

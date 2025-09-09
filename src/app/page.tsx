@@ -9,7 +9,7 @@ const PdfViewer = dynamic(() => import("./components/PdfViewer"), {
 });
 
 export default function Home() {
-  const { stage, setStage, pdfId, setPdfId, pdfFile, setPdfFile } =
+  const { stage, setStage, pdfId, setPdfId, pdfFile, setPdfFile, setPdfUrl } =
     useContextPdf();
   const handleUpload = async (file: File) => {
     setStage("uploading");
@@ -26,6 +26,7 @@ export default function Home() {
           console.log("Upload response data:", data.filename);
           setPdfFile(file);
           setPdfId(data.filename);
+          setPdfUrl(data.url);
           setStage("ready");
         }
       } else {

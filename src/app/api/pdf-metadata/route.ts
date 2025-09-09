@@ -1,38 +1,42 @@
+// app/api/pdf-metadata/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import {
   getPdfMetadata,
   getProcessingInfo,
   processPdfToVectorStore,
+  setProcessingStatus,
 } from "@/utils/langchainPdf";
-import fs from "fs";
-import path from "path";
-import { setProcessingStatus } from "@/utils/langchainPdf";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const pdfId = searchParams.get("pdfId");
+    const pdfUrl = searchParams.get("pdfUrl");
 
-    if (!pdfId) {
+    if (!pdfId || !pdfUrl) {
       return NextResponse.json(
-        { error: "Missing pdfId parameter" },
+        { error: "Missing pdfId or pdfUrl parameter" },
         { status: 400 }
       );
     }
 
     let processingInfo = getProcessingInfo(pdfId);
 
-    if (
-      processingInfo.fileExists &&
-      !processingInfo.processed &&
-      !processingInfo.processing
-    ) {
-      const pdfPath = path.join(process.cwd(), "public", "uploads", pdfId);
-
+    // If the file doesn't exist yet (new upload), trigger processing
+    if (!processingInfo.fileExists && !processingInfo.processing) {
       try {
-        await processPdfToVectorStore(pdfPath, pdfId);
+        console.log(`Starting processing for new PDF: ${pdfId}`);
 
+        // Set processing status to true before starting
+        setProcessingStatus(pdfId, true);
+
+        // Process the PDF
+        await processPdfToVectorStore(pdfUrl, pdfId);
+
+        // Get updated processing info after completion
         processingInfo = getProcessingInfo(pdfId);
+
+        console.log(`Processing completed for PDF: ${pdfId}`);
       } catch (error) {
         console.error(`Processing failed for ${pdfId}:`, error);
         setProcessingStatus(pdfId, false); // Reset on error
@@ -40,6 +44,38 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
           {
             error: "Failed to process PDF",
+            details: error instanceof Error ? error.message : String(error),
+          },
+          { status: 500 }
+        );
+      }
+    }
+    // If file exists but hasn't been processed yet and isn't currently processing
+    else if (
+      processingInfo.fileExists &&
+      !processingInfo.processed &&
+      !processingInfo.processing
+    ) {
+      try {
+        console.log(`Re-processing existing PDF: ${pdfId}`);
+
+        // Set processing status to true before starting
+        setProcessingStatus(pdfId, true);
+
+        // Process the PDF
+        await processPdfToVectorStore(pdfUrl, pdfId);
+
+        // Get updated processing info after completion
+        processingInfo = getProcessingInfo(pdfId);
+
+        console.log(`Re-processing completed for PDF: ${pdfId}`);
+      } catch (error) {
+        console.error(`Re-processing failed for ${pdfId}:`, error);
+        setProcessingStatus(pdfId, false); // Reset on error
+
+        return NextResponse.json(
+          {
+            error: "Failed to re-process PDF",
             details: error instanceof Error ? error.message : String(error),
           },
           { status: 500 }
@@ -58,7 +94,10 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("Error fetching PDF metadata:", error);
     return NextResponse.json(
-      { error: "Failed to fetch PDF metadata" },
+      {
+        error: "Failed to fetch PDF metadata",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
@@ -66,7 +105,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pdfId } = await req.json();
+    const { pdfId, pdfUrl } = await req.json();
 
     if (!pdfId) {
       return NextResponse.json(
@@ -75,10 +114,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const processingInfo = getProcessingInfo(pdfId);
+    let processingInfo = getProcessingInfo(pdfId);
+
+    // If we have a pdfUrl and the file hasn't been processed, trigger processing
+    if (pdfUrl && !processingInfo.processed && !processingInfo.processing) {
+      try {
+        console.log(`POST: Starting processing for PDF: ${pdfId}`);
+
+        // Set processing status to true before starting
+        setProcessingStatus(pdfId, true);
+
+        // Process the PDF
+        await processPdfToVectorStore(pdfUrl, pdfId);
+
+        // Get updated processing info after completion
+        processingInfo = getProcessingInfo(pdfId);
+
+        console.log(`POST: Processing completed for PDF: ${pdfId}`);
+      } catch (error) {
+        console.error(`POST: Processing failed for ${pdfId}:`, error);
+        setProcessingStatus(pdfId, false);
+      }
+    }
+
     const metadata = getPdfMetadata(pdfId);
 
-    // Return quick info about common questions that can be answered from metadata
     const quickAnswers: Record<string, string> = {};
 
     if (metadata) {

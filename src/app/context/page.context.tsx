@@ -10,6 +10,8 @@ interface PageContextProps {
   setPdfId: (id: string | null) => void;
   pageNumber: number;
   setPageNumber: (page: number | ((prevPage: number) => number)) => void;
+  pdfUrl: string | null;
+  setPdfUrl: (url: string | null) => void;
 }
 
 const PageContext = createContext<PageContextProps | null>(null);
@@ -31,6 +33,7 @@ export const ContextProvider = ({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfId, setPdfId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const contextValue: PageContextProps = {
     stage,
@@ -41,6 +44,8 @@ export const ContextProvider = ({
     setPdfId,
     pageNumber,
     setPageNumber,
+    pdfUrl,
+    setPdfUrl,
   };
 
   return (
