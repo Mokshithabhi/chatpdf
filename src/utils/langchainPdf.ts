@@ -138,8 +138,17 @@ export async function processPdfToVectorStore(
     pdfUrls[pdfId] = pdfUrl;
 
     const resp = await fetch(pdfUrl);
+    if (!resp.ok) {
+      throw new Error(
+        `Failed to fetch PDF from Blob: ${resp.status} ${resp.statusText}`
+      );
+    }
     const blob = await resp.blob();
     const file = new File([blob], pdfId, { type: "application/pdf" });
+
+    if (!file.type.includes("pdf")) {
+      throw new Error("Fetched file is not a valid PDF");
+    }
 
     // Load PDF
     const loader = new WebPDFLoader(file);

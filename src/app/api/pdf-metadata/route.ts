@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const pdfId = searchParams.get("pdfId");
-    const pdfUrl = searchParams.get("pdfUrl");
+    const pdfUrl = decodeURIComponent(searchParams.get("pdfUrl") || "");
 
     if (!pdfId || !pdfUrl) {
       return NextResponse.json(
